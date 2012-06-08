@@ -140,11 +140,12 @@ object MessageEncoder extends OneToOneEncoder {
     }
 
     msg.ops.foreach { case (opId, data) =>
-      writeInt(data.writableBytes() + 4) // + Bin name length
+      val binName = Fields.string2TypedChannelBuffer("")
+      writeInt(data.writableBytes() + binName.readableBytes() + 4) // + Bin name length
       writeByte(opId)
-      writeByte(1)  // PARTICLE_TYPE_BLOB
-      writeByte(0) // Bin name length
-      // buf.writeNothing bin name
+      writeByte(3)  // Type string
+      writeByte(binName.readableBytes()) // Bin name length
+      writeBytes(binName)// buf.writeNothing bin name
       writeBytes(data)
     }
     buf

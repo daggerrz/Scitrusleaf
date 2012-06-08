@@ -21,8 +21,8 @@ class ScitrusleafClientSpec extends Specification {
         .hostConnectionLimit(1)
         .build()
 
-//      client(Set("test", "foo", ChannelBuffers.wrappedBuffer("value2".getBytes("UTF-8")))) onSuccess { println }
-      client(Get("test", "foo")) onSuccess { println }
+      client(Set("test", "foo", ChannelBuffers.wrappedBuffer("aaa".getBytes("UTF-8")))) onSuccess { println }
+//      client(Get("test", "foo")) onSuccess { println }
 //      client(ClInfo()) onSuccess { println }
       Thread.sleep(2000)
       true must_== true

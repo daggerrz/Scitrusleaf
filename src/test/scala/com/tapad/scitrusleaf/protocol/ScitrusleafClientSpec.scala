@@ -17,11 +17,11 @@ class ScitrusleafClientSpec extends Specification {
     "read info messages" in {
       val client: Service[ClMessage, ClMessage] = ClientBuilder()
         .codec(ClCodec)
-        .hosts("192.168.0.16:3000")
+        .hosts("192.168.56.101:3000")
         .hostConnectionLimit(1)
         .build()
 
-//      client(Set("test", "key", ChannelBuffers.wrappedBuffer("value".getBytes("UTF-8")))) onSuccess { println }
+//      client(Set("test", "foo", ChannelBuffers.wrappedBuffer("value2".getBytes("UTF-8")))) onSuccess { println }
       client(Get("test", "foo")) onSuccess { println }
 //      client(ClInfo()) onSuccess { println }
       Thread.sleep(2000)

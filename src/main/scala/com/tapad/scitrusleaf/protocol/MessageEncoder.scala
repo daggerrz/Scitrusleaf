@@ -134,20 +134,15 @@ object MessageEncoder extends OneToOneEncoder {
     writeShort(h.opCount)
 
     msg.fields.foreach { case (typeId, value) =>
-      val data = {
-        if (value == "foo") Array[Byte](3, 102, 111,111)
-        else value.getBytes("UTF-8")
-      }
-
-      writeInt(data.length + 1)
+      writeInt(value.readableBytes() + 1)
       writeByte(typeId)
-      writeBytes(data)
+      writeBytes(value)
     }
 
     msg.ops.foreach { case (opId, data) =>
       writeInt(data.writableBytes() + 4) // + Bin name length
       writeByte(opId)
-      writeByte(0)  // PARTICLE_TYPE_BLOB = 4
+      writeByte(1)  // PARTICLE_TYPE_BLOB
       writeByte(0) // Bin name length
       // buf.writeNothing bin name
       writeBytes(data)

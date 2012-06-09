@@ -77,15 +77,81 @@ object ProtocolDecoder extends FrameDecoder {
     val h = Array.ofDim[Byte](headerSize - 1) // We just read the first byte
     buf.readBytes(h)
 
-    Ack(MessageHeader(
+    val header = MessageHeader(
       readFlags = h(0),
       writeFlags = h(1),
       responseFlags = h(2),
       resultCode = h(4),
       fieldCount = (h(17) & 0xff) << 8 | (h(18) & 0xff),
       opCount = (h(19) & 0xff) << 8 | (h(20) & 0xff)
-    ))
+    )
 
+    val fields = (0 until header.fieldCount).foldLeft(List.empty[(Int, ChannelBuffer)]) { case (acc, _) =>
+      Codecs.FieldCodec.decode(buf) :: acc
+    }
+
+    val ops = (0 until header.opCount).foldLeft(List.empty[Op]) { case (acc, _) =>
+      Codecs.OpCodec.decode(buf) :: acc
+    }
+
+    Response(header, fields, ops)
+
+  }
+}
+
+object Codecs {
+
+  object FieldCodec {
+
+    def encode(f: (Int, ChannelBuffer), buf: ChannelBuffer) {
+      val fieldType = f._1
+      val data = f._2
+      buf.writeInt(data.readableBytes() + 1)
+      buf.writeByte(fieldType)
+      buf.writeBytes(data)
+    }
+
+    def decode(buf: ChannelBuffer) = {
+      val len = buf.readInt()
+      val typeId = buf.readByte()
+      val value = typeId match {
+        case Fields.SET =>
+          val buf = ChannelBuffers.buffer(len - 2)
+          // Discard the UTF-8 flag
+          buf.readByte()
+          buf.readBytes(buf, 0, len - 2)
+          buf
+        case _ =>
+          val buf = ChannelBuffers.buffer(len - 1)
+          buf.readBytes(buf, 0, len)
+          buf
+      }
+      typeId.toInt -> value
+    }
+  }
+
+  object OpCodec {
+    def encode(op: Op, buf: ChannelBuffer) {
+      val binName = Fields.string2ChannelBuffer(op.bin)
+      buf.writeInt(op.value.writableBytes() + binName.readableBytes() + 4)
+      buf.writeByte(op.opType)
+      buf.writeByte(0)  // TYPE_NULL = 0 for get, TYPE_STRING = 3 for set?
+      buf.writeByte(0)  // Version, undocumented!
+      buf.writeByte(binName.readableBytes()) // Bin name length
+      buf.writeBytes(binName)// buf.writeNothing bin name
+      buf.writeBytes(op.value)
+    }
+
+    def decode(buf: ChannelBuffer) = {
+      val len = buf.readInt()
+      val opId = buf.readByte()
+      val dataTypeId = buf.readByte()
+      val binNameLen = buf.readByte()
+      val binNameBytes = Array.ofDim[Byte](binNameLen)
+      buf.readBytes(binNameBytes)
+      val data = ChannelBuffers.copiedBuffer(buf)
+      Op(opId.toInt, new String(binNameBytes, "ASCII"), data)
+    }
   }
 }
 
@@ -133,25 +199,13 @@ object MessageEncoder extends OneToOneEncoder {
     writeShort(h.fieldCount)
     writeShort(h.opCount)
 
-    msg.fields.foreach { case (typeId, value) =>
-      writeInt(value.readableBytes() + 1)
-      writeByte(typeId)
-      writeBytes(value)
-    }
-
-    msg.ops.foreach { case (opId, data) =>
-      val binName = Fields.string2TypedChannelBuffer("")
-      writeInt(data.writableBytes() + binName.readableBytes() + 4) // + Bin name length
-      writeByte(opId)
-      writeByte(3)  // Type string
-      writeByte(binName.readableBytes()) // Bin name length
-      writeBytes(binName)// buf.writeNothing bin name
-      writeBytes(data)
-    }
+    msg.fields.foreach { Codecs.FieldCodec.encode(_, buf) }
+    msg.ops.foreach { Codecs.OpCodec.encode(_, buf) }
     buf
   }
-
 }
+
+
 
 object ClWireFormat {
   /**

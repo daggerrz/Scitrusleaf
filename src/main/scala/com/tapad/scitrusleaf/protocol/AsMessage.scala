@@ -12,7 +12,7 @@ trait AsMessage extends ClMessage {
   val typeId = Protocol.TYPE_MESSAGE
 
   def fields: List[(Int, ChannelBuffer)]
-  def ops : List[(Int, ChannelBuffer)]
+  def ops : List[Op]
   def header : MessageHeader
 }
 
@@ -21,22 +21,20 @@ object Fields {
   val SET = 1
   val KEY = 2
 
-  def string2TypedChannelBuffer(s: String) = {
+
+  def keyToChannelBuffer(s: String) = {
     val buf = ChannelBuffers.buffer(s.length + 1)
-    buf.writeByte(0x03) // UTF-8 flag
+    buf.writeByte(0x03) // We only support strings, and this is type 0x03
     buf.writeBytes(s.getBytes("UTF-8"))
     buf
   }
 
   def string2ChannelBuffer(s: String) = ChannelBuffers.copiedBuffer(s.getBytes("UTF-8"))
 
-  def fieldList(namespace: String, key: String, bin: String) = List(
+  def fieldList(namespace: String, set: String, key: String) = List(
     NAMESPACE -> string2ChannelBuffer(namespace),
-    SET -> ChannelBuffers.EMPTY_BUFFER,
-    // Namespace and sets can only be string, but keys can have different types
-    // and this needs to be flagged in the actual key byte buffer
-    // We only support String keys for now.
-    KEY -> string2TypedChannelBuffer(key)
+    SET -> string2ChannelBuffer(set),
+    KEY -> keyToChannelBuffer(key)
   )
 }
 
@@ -44,12 +42,17 @@ object Ops {
   val READ = 1
   val WRITE = 2
 }
+case class Op(opType: Int, bin: String, value: ChannelBuffer)
 
-case class Set(namespace: String, key: String, value: ChannelBuffer, bin: String = "", expiration: Int = 0, generation: Int = 0) extends AsMessage {
+case class Set(namespace: String,
+               set: String = "",
+               key: String,
+               bin: String = "",
+               value: ChannelBuffer,
+               expiration: Int = 0, generation: Int = 0) extends AsMessage {
+  val fields = Fields.fieldList(namespace, set, key)
+  val ops = List(Op(Ops.WRITE, bin, value))
 
-  val fields = Fields.fieldList(namespace, key, bin)
-
-  val ops = List(Ops.WRITE -> value)
   val header = MessageHeader(
     readFlags = 0.asInstanceOf[Byte],
     writeFlags = (1 | (if (generation != 0) 1 << 1 else 0)).asInstanceOf[Byte],
@@ -60,9 +63,12 @@ case class Set(namespace: String, key: String, value: ChannelBuffer, bin: String
   )
 }
 
-case class Get(namespace: String, key: String, bin: String = "") extends AsMessage {
-  val fields = Fields.fieldList(namespace, key, bin)
-  val ops = List(Ops.READ -> ChannelBuffers.EMPTY_BUFFER)
+case class Get(namespace: String,
+               set: String = "",
+               key: String,
+               bin: String = "") extends AsMessage {
+  val fields = Fields.fieldList(namespace, set, key)
+  val ops = List(Op(Ops.READ, bin, ChannelBuffers.EMPTY_BUFFER))
   val header = MessageHeader(
     readFlags = 1.asInstanceOf[Byte],
     writeFlags = 0.asInstanceOf[Byte],
@@ -74,11 +80,7 @@ case class Get(namespace: String, key: String, bin: String = "") extends AsMessa
 }
 
 
-case class Ack(header: MessageHeader) extends AsMessage {
-  val fields = List.empty
-  val ops = List.empty
-}
-
+case class Response(header: MessageHeader, fields: List[(Int, ChannelBuffer)], ops: List[Op]) extends AsMessage
 
 case class ClInfo(values: Map[String, String] = Map.empty) extends ClMessage {
   val typeId = Protocol.INFO

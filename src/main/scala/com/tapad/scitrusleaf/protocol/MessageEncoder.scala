@@ -133,9 +133,11 @@ object Codecs {
   object OpCodec {
     def encode(op: Op, buf: ChannelBuffer) {
       val binName = Fields.string2ChannelBuffer(op.bin)
-      buf.writeInt(op.value.writableBytes() + binName.readableBytes() + 4)
+      buf.writeInt(op.value.readableBytes() + binName.readableBytes() + 4)
       buf.writeByte(op.opType)
-      buf.writeByte(0)  // TYPE_NULL = 0 for get, TYPE_STRING = 3 for set?
+      // TYPE_NULL = 0 for get, TYPE_STRING = 3, TYPE_BLOB = 4
+      val dataType = if (op.opType == Ops.READ) 0 else 4
+      buf.writeByte(dataType)
       buf.writeByte(0)  // Version, undocumented!
       buf.writeByte(binName.readableBytes()) // Bin name length
       buf.writeBytes(binName)// buf.writeNothing bin name
@@ -146,6 +148,7 @@ object Codecs {
       val len = buf.readInt()
       val opId = buf.readByte()
       val dataTypeId = buf.readByte()
+      val version = buf.readByte()
       val binNameLen = buf.readByte()
       val binNameBytes = Array.ofDim[Byte](binNameLen)
       buf.readBytes(binNameBytes)

@@ -28,11 +28,11 @@ class ScitrusleafClientSpec extends Specification {
         }}
       }
       val c = new Citrusleaf(client, "test")
-//      client(Set(namespace = "test", key = "foo", value = ChannelBuffers.wrappedBuffer("aaaaxx".getBytes("UTF-8")))) onSuccess { println }
-      c.getString("foo") onSuccess (res => println(res.map(b => new String(b.array(), "UTF-8"))))
 //      c.getString("foo") onSuccess (res => println(res.map(b => new String(b.array(), "UTF-8"))))
-//      c.getString("fo2o") onSuccess (res => println(res.map(b => new String(b.array(), "UTF-8"))))
-//      c.getString("fo2o") onSuccess (res => println(res.map(b => new String(b.array(), "UTF-8"))))
+      client(Set(namespace = "test", key = "foo", value = ChannelBuffers.wrappedBuffer("Yay!".getBytes("UTF-8")))) onSuccess { println }
+      client(Get("test", "", "foo", "")) onSuccess { println }
+      c.getString("foo") onSuccess (res => println(res.map(b => new String(b.array(), "UTF-8"))))
+//      client(ClInfo()) onSuccess { println }
 //      client(Get("test", "", "foo", "")) onSuccess { println }
 //      client(ClInfo()) onSuccess { println }
       Thread.sleep(2000)

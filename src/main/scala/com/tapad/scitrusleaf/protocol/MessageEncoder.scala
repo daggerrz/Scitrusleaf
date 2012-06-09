@@ -40,9 +40,8 @@ object ProtocolDecoder extends FrameDecoder {
       null
     } else {
       buf.markReaderIndex()
-      val version = buf.getByte(0)
-      val messageType = buf.getByte(1)
-      buf.readerIndex(2)
+      val version = buf.readByte()
+      val messageType = buf.readByte()
       val length = ClWireFormat.read48BitLong(buf).toInt
       if (buf.readableBytes() < length) {
         buf.resetReaderIndex()
@@ -60,6 +59,7 @@ object ProtocolDecoder extends FrameDecoder {
       }
     }
   }
+
   def parseInfoMessage(header: ProtocolHeader, buf: ChannelBuffer) = {
     val array = Array.ofDim[Byte](header.messageLength.toInt)
     buf.readBytes(array)
@@ -74,7 +74,7 @@ object ProtocolDecoder extends FrameDecoder {
 
   def parseAsMessage(header: ProtocolHeader, buf: ChannelBuffer) = {
     val headerSize = buf.readByte().toInt
-    val h = Array.ofDim[Byte](headerSize - 1) // We just read the first byte
+    val h = Array.ofDim[Byte](headerSize - 1) // We already read the first byte
     buf.readBytes(h)
 
     val header = MessageHeader(
@@ -149,7 +149,8 @@ object Codecs {
       val binNameLen = buf.readByte()
       val binNameBytes = Array.ofDim[Byte](binNameLen)
       buf.readBytes(binNameBytes)
-      val data = ChannelBuffers.copiedBuffer(buf)
+      val data = ChannelBuffers.buffer(buf.readableBytes())
+      buf.readBytes(data)
       Op(opId.toInt, new String(binNameBytes, "ASCII"), data)
     }
   }

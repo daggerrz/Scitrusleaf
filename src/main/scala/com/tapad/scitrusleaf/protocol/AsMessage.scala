@@ -11,8 +11,8 @@ sealed trait ClMessage {
 trait AsMessage extends ClMessage {
   val typeId = Protocol.TYPE_MESSAGE
 
-  def fields: List[(Int, ChannelBuffer)]
-  def ops : List[Op]
+  def fields: Array[(Int, ChannelBuffer)]
+  def ops : Array[Op]
   def header : MessageHeader
 }
 
@@ -31,7 +31,7 @@ object Fields {
 
   def string2ChannelBuffer(s: String) = ChannelBuffers.copiedBuffer(s.getBytes("UTF-8"))
 
-  def fieldList(namespace: String, set: String, key: String) = List(
+  def fieldList(namespace: String, set: String, key: String) = Array(
     NAMESPACE -> string2ChannelBuffer(namespace),
     SET -> string2ChannelBuffer(set),
     KEY -> keyToChannelBuffer(key)
@@ -51,7 +51,7 @@ case class Set(namespace: String,
                value: ChannelBuffer,
                expiration: Int = 0, generation: Int = 0) extends AsMessage {
   val fields = Fields.fieldList(namespace, set, key)
-  val ops = List(Op(Ops.WRITE, bin, value))
+  val ops = Array(Op(Ops.WRITE, bin, value))
 
   val header = MessageHeader(
     readFlags = 0.asInstanceOf[Byte],
@@ -68,7 +68,7 @@ case class Get(namespace: String,
                key: String,
                bin: String = "") extends AsMessage {
   val fields = Fields.fieldList(namespace, set, key)
-  val ops = List(Op(Ops.READ, bin, ChannelBuffers.EMPTY_BUFFER))
+  val ops = Array(Op(Ops.READ, bin, ChannelBuffers.EMPTY_BUFFER))
   val header = MessageHeader(
     readFlags = 1.asInstanceOf[Byte],
     writeFlags = 0.asInstanceOf[Byte],
@@ -80,7 +80,7 @@ case class Get(namespace: String,
 }
 
 
-case class Response(header: MessageHeader, fields: List[(Int, ChannelBuffer)], ops: List[Op]) extends AsMessage
+case class Response(header: MessageHeader, fields: Array[(Int, ChannelBuffer)], ops: Array[Op]) extends AsMessage
 
 case class ClInfo(values: Map[String, String] = Map.empty) extends ClMessage {
   val typeId = Protocol.INFO

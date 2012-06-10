@@ -48,7 +48,6 @@ object ProtocolDecoder extends FrameDecoder {
         null
       } else {
         val header = ProtocolHeader(messageType, length)
-        Logger.info("Receiving message of type " + messageType)
         messageType match {
           case Protocol.INFO => parseInfoMessage(header, buf)
           case Protocol.TYPE_MESSAGE => parseAsMessage(header, buf)
@@ -86,12 +85,23 @@ object ProtocolDecoder extends FrameDecoder {
       opCount = (h(19) & 0xff) << 8 | (h(20) & 0xff)
     )
 
-    val fields = (0 until header.fieldCount).foldLeft(List.empty[(Int, ChannelBuffer)]) { case (acc, _) =>
-      Codecs.FieldCodec.decode(buf) :: acc
+    var i = 0
+    var n = 0
+
+    val fields = Array.ofDim[(Int, ChannelBuffer)](header.fieldCount)
+    i = 0
+    n = header.fieldCount
+    while (i < n)  {
+      fields(i) = Codecs.FieldCodec.decode(buf)
+      i += 1
     }
 
-    val ops = (0 until header.opCount).foldLeft(List.empty[Op]) { case (acc, _) =>
-      Codecs.OpCodec.decode(buf) :: acc
+    val ops = Array.ofDim[Op](header.opCount)
+    i = 0
+    n = header.opCount
+    while (i < n)  {
+      ops(i) = Codecs.OpCodec.decode(buf)
+      i += 1
     }
 
     Response(header, fields, ops)
@@ -135,7 +145,8 @@ object Codecs {
       val binName = Fields.string2ChannelBuffer(op.bin)
       buf.writeInt(op.value.readableBytes() + binName.readableBytes() + 4)
       buf.writeByte(op.opType)
-      // TYPE_NULL = 0 for get, TYPE_STRING = 3, TYPE_BLOB = 4
+      // TYPE_NULL = 0 for get, TYPE_BLOB = 4.
+      // We use binary data for everything, so no matter.
       val dataType = if (op.opType == Ops.READ) 0 else 4
       buf.writeByte(dataType)
       buf.writeByte(0)  // Version, undocumented!
@@ -176,7 +187,6 @@ object MessageEncoder extends OneToOneEncoder {
     writeByte(Protocol.VERSION)
     writeByte(clMsg.typeId)
     writeBytes(ClWireFormat.as48BitLong(payload.readableBytes()))
-    // TODO: Merge buffers ?
     writeBytes(payload)
     buf
   }

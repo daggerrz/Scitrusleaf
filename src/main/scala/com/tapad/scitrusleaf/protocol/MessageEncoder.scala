@@ -178,17 +178,16 @@ object MessageEncoder extends OneToOneEncoder {
     val clMsg = msg.asInstanceOf[ClMessage]
 
     val payload = clMsg match {
-      case m : ClInfo => ChannelBuffers.dynamicBuffer(0)
+      case m : ClInfo => ChannelBuffers.EMPTY_BUFFER
       case m : AsMessage => encodeAsMessage(m)
     }
 
-    val buf = ChannelBuffers.dynamicBuffer(22 + payload.readableBytes()) // Fixed 22 bytes
+    val buf = ChannelBuffers.buffer(22 + payload.readableBytes()) // Fixed 22 bytes
     import buf._
     writeByte(Protocol.VERSION)
     writeByte(clMsg.typeId)
     writeBytes(ClWireFormat.as48BitLong(payload.readableBytes()))
-    writeBytes(payload)
-    buf
+    ChannelBuffers.wrappedBuffer(buf, payload)
   }
 
   /**

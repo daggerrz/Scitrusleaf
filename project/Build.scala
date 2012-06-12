@@ -24,7 +24,7 @@ object Scitrusleaf extends Build {
   )
 
  lazy val root = Project(
-    "root", file("."),
+    "scitrusleaf", file("."),
     settings =
       buildSettings ++
       Seq(

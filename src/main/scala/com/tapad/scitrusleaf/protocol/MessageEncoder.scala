@@ -3,18 +3,9 @@ package com.tapad.scitrusleaf.protocol
 import org.jboss.netty.buffer.{ChannelBuffer, ChannelBuffers}
 import org.jboss.netty.channel._
 import com.twitter.finagle.Codec
-import org.jboss.netty.handler.codec.frame.FrameDecoder
-import org.jboss.netty.handler.codec.oneone.OneToOneEncoder
-
-object Logger {
-  def info(msg: String) {
-    println(msg)
-  }
-
-  def error(msg: String) {
-    println("ERROR: " + msg)
-  }
-}
+import org.jboss.netty.handler.codec.frame.{CorruptedFrameException, FrameDecoder}
+import org.jboss.netty.handler.codec.oneone.{OneToOneDecoder, OneToOneEncoder}
+import org.slf4j.LoggerFactory
 
 object Protocol {
   val INFO = 1
@@ -26,38 +17,54 @@ object ClCodec extends Codec[ClMessage, ClMessage] {
   def pipelineFactory = new ChannelPipelineFactory {
     def getPipeline = {
       Channels.pipeline(
-        MessageEncoder,
-        ProtocolDecoder
+        new ClFrameDecoder,
+        new ProtocolDecoder,
+        new MessageEncoder
       )
     }
   }
 }
 
-object ProtocolDecoder extends FrameDecoder {
-
-  def decode(ctx: ChannelHandlerContext, channel: Channel, buf: ChannelBuffer): ClMessage = {
-    if (buf.readableBytes() < 8) {
+class ClFrameDecoder extends FrameDecoder {
+  private[this] val HEADER_LENGTH = 8
+  def decode(ctx: ChannelHandlerContext, channel: Channel, buf: ChannelBuffer) = {
+    if (buf.readableBytes() < HEADER_LENGTH) {
       null
     } else {
-      buf.markReaderIndex()
-      val version = buf.readByte()
-      val messageType = buf.readByte()
+      val startReaderIndex = buf.readerIndex()
+      // Skip version and message type bytes
+      buf.skipBytes(2)
+      // 6 byte length field
       val length = ClWireFormat.read48BitLong(buf).toInt
-      if (buf.readableBytes() < length) {
-        buf.resetReaderIndex()
+      val frameLength = length + HEADER_LENGTH
+      buf.readerIndex(startReaderIndex)
+      if (buf.readableBytes() < frameLength) {
         null
       } else {
-        val header = ProtocolHeader(messageType, length)
-        messageType match {
-          case Protocol.INFO => parseInfoMessage(header, buf)
-          case Protocol.TYPE_MESSAGE => parseAsMessage(header, buf)
-          case other =>
-            Logger.error("Ignoring unknown message type " + other)
-            null // TODO: This will just resume framing. How do we really discard the message?
-        }
+        buf.readBytes(frameLength)
       }
     }
   }
+}
+
+class ProtocolDecoder extends OneToOneDecoder {
+  def decode(ctx: ChannelHandlerContext, channel: Channel, msg: Any) = {
+    val buf = msg.asInstanceOf[ChannelBuffer]
+    val version = buf.readByte()
+    val messageType = buf.readByte()
+    val length = ClWireFormat.read48BitLong(buf).toInt
+    val header = ProtocolHeader(messageType, length)
+    val frame = buf.readBytes(length)
+    messageType match {
+      case Protocol.INFO => parseInfoMessage(header, frame)
+      case Protocol.TYPE_MESSAGE => parseAsMessage(header, frame)
+      case other =>
+        val array = Array.ofDim[Byte](header.messageLength.toInt)
+        buf.readBytes(array)
+        throw new CorruptedFrameException("Don't know how to handle message of type " + other)
+    }
+  }
+
 
   def parseInfoMessage(header: ProtocolHeader, buf: ChannelBuffer) = {
     val array = Array.ofDim[Byte](header.messageLength.toInt)
@@ -163,14 +170,14 @@ object Codecs {
       val binNameLen = buf.readByte()
       val binNameBytes = Array.ofDim[Byte](binNameLen)
       buf.readBytes(binNameBytes)
-      val data = ChannelBuffers.buffer(buf.readableBytes())
+      val data = buf.readBytes(buf.readableBytes())
       buf.readBytes(data)
       Op(opId.toInt, new String(binNameBytes, "ASCII"), data)
     }
   }
 }
 
-object MessageEncoder extends OneToOneEncoder {
+class MessageEncoder extends OneToOneEncoder {
 
   @throws(classOf[Exception])
   def encode(ctx: ChannelHandlerContext, channel: Channel, msg: Any) = {

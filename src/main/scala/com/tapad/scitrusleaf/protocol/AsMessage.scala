@@ -25,7 +25,13 @@ object Fields {
   def keyToChannelBuffer(s: String) = {
     val buf = ChannelBuffers.buffer(s.length + 1)
     buf.writeByte(0x03) // We only support strings, and this is type 0x03
-    buf.writeBytes(s.getBytes("UTF-8"))
+    try {
+      buf.writeBytes(s.getBytes("UTF-8"))
+    } catch {
+      case  e : Exception =>
+        Logger.error("Error encoding key %s to channelbuffer".format(s, e))
+        throw e
+    }
     buf
   }
 

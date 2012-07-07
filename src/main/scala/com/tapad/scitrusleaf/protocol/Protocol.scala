@@ -2,6 +2,12 @@ package com.tapad.scitrusleaf.protocol
 
 import org.jboss.netty.buffer.{ChannelBuffer, ChannelBuffers}
 
+object Protocol {
+  val TYPE_INFO = 1
+  val TYPE_VERSION = 2
+  val TYPE_MESSAGE = 3
+}
+
 case class ProtocolHeader(typeId: Int, messageLength: Long)
 
 sealed trait ClMessage {
@@ -20,7 +26,6 @@ object Fields {
   val NAMESPACE = 0
   val SET = 1
   val KEY = 2
-
 
   def keyToChannelBuffer(s: String) = {
     val buf = ChannelBuffers.buffer(s.length + 1)
@@ -89,7 +94,7 @@ case class Get(namespace: String,
 case class Response(header: MessageHeader, fields: Array[(Int, ChannelBuffer)], ops: Array[Op]) extends AsMessage
 
 case class ClInfo(values: Map[String, String] = Map.empty) extends ClMessage {
-  val typeId = Protocol.INFO
+  val typeId = Protocol.TYPE_INFO
 }
 
 

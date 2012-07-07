@@ -41,7 +41,7 @@ class ClFrameDecoder extends FrameDecoder {
       if (buf.readableBytes() < frameLength) {
         null
       } else {
-        buf.readBytes(frameLength)
+        buf.readSlice(frameLength)
       }
     }
   }

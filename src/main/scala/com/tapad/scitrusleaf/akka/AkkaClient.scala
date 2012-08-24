@@ -1,6 +1,6 @@
 package com.tapad.scitrusleaf.akka
 
-import java.util.concurrent.{ConcurrentSkipListMap, Executors}
+import java.util.concurrent.Executors
 import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory
 import org.jboss.netty.bootstrap.ClientBootstrap
 import org.jboss.netty.channel._
@@ -10,7 +10,6 @@ import java.util.concurrent.atomic.{AtomicInteger, AtomicBoolean}
 import java.net.InetSocketAddress
 import annotation.tailrec
 import java.nio.channels.ClosedChannelException
-import org.apache.commons.collections.list.SynchronizedList
 
 
 object AkkaClient {
@@ -27,11 +26,10 @@ object AkkaClient {
 
     (0 until nodeCount).foreach { _ =>
       factory().connect().onComplete { _ fold (
-        _.printStackTrace(),
+        { error => println(error.getMessage) },
         n => nodes = n +: nodes
       )}
     }
-
 
     private[this] def next(): Int = {
       val c = nodeIndex.getAndIncrement()
@@ -49,9 +47,9 @@ object AkkaClient {
     def connect() = null
   }
 
-  class ClClient(private val host: String,
-                 private val port: Int,
-                 private val bs: ClientBootstrap,
+  class ClClient(host: String,
+                 port: Int,
+                 bs: ClientBootstrap,
                  private implicit val executionContext: ExecutionContext) extends Client[ClMessage, ClMessage] {
 
 
@@ -62,11 +60,11 @@ object AkkaClient {
     private[this] var connector: Channel = _
 
     @tailrec private def sendFailures(ex: Throwable) {
-      Option(requestQueue.poll()) match {
-        case Some(promise) =>
+      requestQueue.poll() match {
+        case null =>
+        case promise =>
           promise.failure(ex)
           sendFailures(ex)
-        case _ =>
       }
     }
 
@@ -123,7 +121,6 @@ object AkkaClient {
           } else {
             System.out.println("--- CLIENT - Failed to connect to server at " +
               "%s:%d".format(host, port))
-            bs.releaseExternalResources();
             res.failure(future.getCause)
           }
         }
@@ -155,6 +152,7 @@ object AkkaClient {
     bs.setOption("tcpNoDelay", true)
     bs.setOption("reuseAddress", true)
     bs.setOption("receiveBufferSize", 1600)
+    bs.setOption("connectTimeoutMillis", 1)
 
 
     def build(host: String, port: Int) = new ClClient(host, port, bs, executionContext)

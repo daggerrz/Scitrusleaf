@@ -1,30 +1,34 @@
 package com.tapad.scitrusleaf.protocol
 
-import java.util.concurrent.atomic.AtomicInteger
+import com.twitter.finagle.Service
 import org.jboss.netty.buffer.ChannelBuffers
-import com.tapad.scitrusleaf.akka.AkkaClient
+import java.util.concurrent.atomic.AtomicInteger
+import com.tapad.scitrusleaf.finagle.CitrusleafCodec
 
+/**
+ *
+ * User: liodden
+ */
 
-object Debug {
-  val rvc = new AtomicInteger()
-  def receive() { println("R:" + rvc.incrementAndGet())}
-  val tx = new AtomicInteger()
-  def write() { println("W:" + tx.incrementAndGet())}
-}
-
-
-
-
-object AkkaBench {
+object Bench {
 
   def main(args: Array[String]) {
-    import AkkaClient._
 
-    val clientCount = 150
+    val client: Service[ClMessage, ClMessage] = com.twitter.finagle.builder.ClientBuilder()
+      .codec(CitrusleafCodec)
+      .hosts("192.168.0.12:3000")
+      .hostConnectionLimit(1000)
+      .build()
 
-    val client = new LoadBalancer(clientCount, () => ClientBuilder.build("192.168.0.10", 3000))
+    class Citrusleaf(client: Service[ClMessage, ClMessage], ns: String) {
+      def getString(key: String) = client(Get(ns, key = key)) map {
+        _ match {
+          case m: Response => m.ops.headOption.map(_.value)
+          case m@_ => throw new IllegalArgumentException("Unable to handle mssage: " + m)
+        }
+      }
+    }
 
-    Thread.sleep(1000)
 
     val started = new AtomicInteger()
     val completed = new AtomicInteger()
@@ -50,21 +54,11 @@ object AkkaBench {
 
       var i = 0
 
-      while (i < 1000000) {
+      while (i < 100000) {
         i += 1
         val key = started.incrementAndGet()
 //        client(Set(namespace = "test", key = key.toString, value = data)) map (success _)
-        client(Get(namespace = "test", key = key.toString)).onComplete(_ fold(
-          { e =>
-            println(e.getMessage)
-            e.printStackTrace()
-          },
-          r => success(r)
-        ))
-//        while ((started.get() - completed.get()) > 10000) {
-//          Thread.sleep(100)
-//        }
-//        Thread.sleep(1000)
+        client(Get(namespace = "test", key = key.toString)).onSuccess(success _ )
       }
       while (started.get() > completed.get()) {
         println("Started %d, completed %d".format(started.get(), completed.get()))
@@ -86,4 +80,5 @@ object AkkaBench {
     }
     spawn()
   }
+
 }

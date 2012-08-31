@@ -152,7 +152,7 @@ object AkkaClient {
     bs.setOption("tcpNoDelay", true)
     bs.setOption("reuseAddress", true)
     bs.setOption("receiveBufferSize", 1600)
-    bs.setOption("connectTimeoutMillis", 1)
+    bs.setOption("connectTimeoutMillis", 100)
 
 
     def build(host: String, port: Int) = new ClClient(host, port, bs, executionContext)

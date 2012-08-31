@@ -1,89 +1,74 @@
 package com.tapad.scitrusleaf.protocol
 
-import java.util.concurrent.atomic.AtomicInteger
-import org.jboss.netty.buffer.ChannelBuffers
+import java.util.concurrent.atomic.{AtomicLong, AtomicInteger}
 import com.tapad.scitrusleaf.akka.AkkaClient
-
-
-object Debug {
-  val rvc = new AtomicInteger()
-  def receive() { println("R:" + rvc.incrementAndGet())}
-  val tx = new AtomicInteger()
-  def write() { println("W:" + tx.incrementAndGet())}
-}
-
-
+import com.twitter.finagle.stats.SummarizingStatsReceiver
+import com.twitter.util.{Time}
+import akka.dispatch._
+import akka.util.Duration
+import akka.actor.ActorSystem
+import java.util.concurrent.TimeUnit
+import org.jboss.netty.buffer.ChannelBuffers
 
 
 object AkkaBench {
 
   def main(args: Array[String]) {
     import AkkaClient._
-
-    val clientCount = 150
-
-    val client = new LoadBalancer(clientCount, () => ClientBuilder.build("192.168.0.10", 3000))
-
-    Thread.sleep(1000)
-
-    val started = new AtomicInteger()
-    val completed = new AtomicInteger()
-    val startedTime = System.currentTimeMillis()
-    val bytesRead = new AtomicInteger()
+    implicit val system = ActorSystem("foo")
+    implicit val executor = ExecutionContext.defaultExecutionContext
 
 
-    def success(m: ClMessage) : Unit = {
-        m match {
-          case r : Response => r.ops.headOption.map(_.value.readableBytes()).foreach(c => bytesRead.addAndGet(c))
-          case _ =>
+    val concurrency = 150
+    val totalRequests = 50000
+
+    val key = new AtomicInteger(0)
+    val statsReceiver = new SummarizingStatsReceiver
+    val responses = new AtomicInteger(0)
+    val completedRequests = new AtomicInteger()
+    val errors = new AtomicInteger(0)
+    val bytesReceived = new AtomicLong(0)
+
+    val client = new LoadBalancer(concurrency, () => ClientBuilder.build("192.168.0.16", 3000))
+
+    val start = Time.now
+
+    val blanks = Array.ofDim[Byte](500)
+    val requests = (0 until concurrency).map { _ =>
+        (0 until (totalRequests / concurrency)).map { _ =>
+                  val request = Get(namespace = "test", key = key.incrementAndGet().toString)
+//            val data = ChannelBuffers.copiedBuffer(blanks)
+//            val request = Set(namespace = "test", key = key.incrementAndGet().toString, value = data)
+            client(request) onSuccess { case response =>
+              response.asInstanceOf[Response].ops.headOption.map(_.value.readableBytes()).foreach(c => bytesReceived.addAndGet(c))
+              responses.incrementAndGet()
+            } onFailure {
+              case e =>
+                errors.incrementAndGet()
+            } onComplete {
+              case _ =>
+                completedRequests.incrementAndGet()
+            }
         }
-        val c = completed.incrementAndGet()
-        if (c % 1000 == 0) {
-          println(completed + " of %d started, %.2f requests / s, %(,d bytes read".format(started.get(), c.toDouble * 1000 / (System.currentTimeMillis() - startedTime), bytesRead.get()))
-        }
-    }
+    }.flatten
 
 
 
-    def runBench() {
-      def data = ChannelBuffers.wrappedBuffer(Array.fill[Byte](1500)(47))
+    val f: Future[Seq[ClMessage]] = Future.sequence(requests)
 
-      var i = 0
-
-      while (i < 1000000) {
-        i += 1
-        val key = started.incrementAndGet()
-//        client(Set(namespace = "test", key = key.toString, value = data)) map (success _)
-        client(Get(namespace = "test", key = key.toString)).onComplete(_ fold(
-          { e =>
-            println(e.getMessage)
-            e.printStackTrace()
-          },
-          r => success(r)
-        ))
-//        while ((started.get() - completed.get()) > 10000) {
-//          Thread.sleep(100)
-//        }
-//        Thread.sleep(1000)
-      }
-      while (started.get() > completed.get()) {
-        println("Started %d, completed %d".format(started.get(), completed.get()))
-        Thread.sleep(1000)
-      }
-      println("Done submitting")
+    Await.result(f, Duration.apply(10, TimeUnit.MINUTES))
 
 
-      Thread.sleep(200000)
+    val duration = start.untilNow
+    println("%20s\t%s".format("Status", "Count"))
+    println("%20s\t%d".format(0, responses.get()))
+    println("================")
+    println("%d requests completed in %dms (%f requests per second)".format(
+      completedRequests.get, duration.inMilliseconds,
+      totalRequests.toFloat / duration.inMillis.toFloat * 1000))
+    println("%d errors".format(errors.get))
+    println("%2f MBytes received".format(bytesReceived.get() / 1000000.0))
 
-    }
-
-    def spawn() {
-      new Thread() {
-        override def run() {
-          runBench()
-        }
-      }.start()
-    }
-    spawn()
+    System.exit(0)
   }
 }
